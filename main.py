@@ -9,6 +9,7 @@
 import csv
 import json
 import os
+import ssl
 import threading
 import urllib.request
 from datetime import datetime
@@ -32,6 +33,11 @@ BASE = "https://www.nmc.cn"
 HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": BASE}
 INTERVAL_SEC = 10 * 60
 CSV_NAME = "weather_records.csv"
+
+# 安卓上打包的 Python 没有内置根证书，跳过 SSL 验证（天气数据无敏感性）
+SSL_CONTEXT = ssl.create_default_context()
+SSL_CONTEXT.check_hostname = False
+SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 
 CSV_COLUMNS = [
     "记录时间", "省份", "城市", "数据发布时间", "天气",
@@ -75,7 +81,7 @@ def register_cjk_font():
 
 def http_get_json(url):
     req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=20) as resp:
+    with urllib.request.urlopen(req, timeout=20, context=SSL_CONTEXT) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -275,11 +281,12 @@ class WeatherRoot(BoxLayout):
         # 状态条
         self.status_label = Label(
             text=f"CSV 文件：{self.csv_path}", font_name=font_name,
-            font_size=dp(13), size_hint_y=None, height=dp(40),
-            halign="left", valign="middle",
+            font_size=dp(13), size_hint_y=None, height=dp(70),
+            halign="left", valign="top",
         )
         self.status_label.bind(
-            size=lambda *_: setattr(self.status_label, "text_size", self.status_label.size)
+            size=lambda *_: setattr(self.status_label, "text_size",
+                                    (self.status_label.width, None))
         )
         self.add_widget(self.status_label)
 
