@@ -1,58 +1,63 @@
-[app]
+name: Build APK
 
-# 应用名称（显示在手机桌面图标下）
-title = 城市天气记录器
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
 
-# 包名（小写，无空格无中文）
-package.name = weatherlogger
+jobs:
+  build:
+    runs-on: ubuntu-22.04
 
-# 包域名（反写域名，随便填一个唯一的）
-package.domain = org.example
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-# 源码目录（当前目录）
-source.dir = .
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
 
-# 打包进 APK 的文件类型
-source.include_exts = py,png,jpg,kv,atlas,ttf,ttc
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          git zip unzip openjdk-17-jdk \
+          autoconf libtool pkg-config \
+          zlib1g-dev libncurses-dev libncursesw5-dev \
+          cmake libffi-dev libssl-dev \
+          build-essential ccache
 
-# 应用版本
-version = 1.0
+    - name: Install Buildozer
+      run: |
+        python -m pip install --upgrade pip
+        pip install buildozer cython==0.29.36
 
-# 依赖：python3 + kivy + 网络证书相关
-# 程序只用到标准库 urllib，无第三方运行时依赖
-requirements = python3,kivy,certifi,openssl
+    - name: Cache Buildozer global directory
+      uses: actions/cache@v4
+      with:
+        path: ~/.buildozer
+        key: buildozer-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          buildozer-
 
-# 屏幕方向：竖屏
-orientation = portrait
+    - name: Build APK with Buildozer
+      run: |
+        export PATH=$PATH:~/.local/bin
+        buildozer android debug
+      env:
+        BUILDOZER_WARN_ON_ROOT: "0"
 
-# 全屏（0=保留状态栏，1=全屏）
-fullscreen = 0
+    - name: Find APK
+      id: find_apk
+      run: |
+        APK_PATH=$(ls bin/*.apk | head -n 1)
+        echo "Found APK: $APK_PATH"
+        echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
 
-# 入口文件（默认 main.py，无需改名）
-# Buildozer 默认就是 main.py
-
-# ===== 安卓权限 =====
-# INTERNET：联网抓取数据
-# ACCESS_NETWORK_STATE：检测网络状态
-android.permissions = INTERNET,ACCESS_NETWORK_STATE
-
-# 目标 / 最低 安卓 API
-android.api = 33
-android.minapi = 24
-
-# 支持的 CPU 架构（现代手机用 arm64-v8a，兼容老机器加 armeabi-v7a）
-android.archs = arm64-v8a, armeabi-v7a
-
-# 自动接受 SDK 许可协议（首次打包必需，否则会卡在询问）
-android.accept_sdk_license = True
-
-# 备份开关
-android.allow_backup = True
-
-[buildozer]
-
-# 日志级别：2 = 详细，方便排错
-log_level = 2
-
-# 出现 root 警告时是否继续
-warn_on_root = 1
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: weather-logger-apk
+        path: ${{ steps.find_apk.outputs.apk_path }}
+        if-no-files-found: error
